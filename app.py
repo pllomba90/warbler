@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, flash, redirect, session, g
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
-from forms import UserAddForm, LoginForm, MessageForm
+from forms import UserAddForm, LoginForm, MessageForm, UserEditForm
 from models import db, connect_db, User, Message
 
 CURR_USER_KEY = "curr_user"
@@ -22,7 +22,9 @@ app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
 toolbar = DebugToolbarExtension(app)
 
-connect_db(app)
+with app.app_context():
+    connect_db(app)
+    db.create_all()
 
 
 ##############################################################################
@@ -73,7 +75,7 @@ def signup():
                 username=form.username.data,
                 password=form.password.data,
                 email=form.email.data,
-                image_url=form.image_url.data or User.image_url.default.arg,
+                image_url=form.image_url.data or User.image_url.default.arg
             )
             db.session.commit()
 
@@ -112,8 +114,9 @@ def login():
 @app.route('/logout')
 def logout():
     """Handle logout of user."""
+    do_logout()
 
-    # IMPLEMENT THIS
+    return render_template("home_anon.html")
 
 
 ##############################################################################
@@ -208,10 +211,30 @@ def stop_following(follow_id):
 
 
 @app.route('/users/profile', methods=["GET", "POST"])
-def profile():
+def profile(user_id):
     """Update profile for current user."""
+    user = User.query.get_or_404(user_id)
+    form = UserEditForm(obj=user_id)
 
-    # IMPLEMENT THIS
+    if form.validate_on_submit():
+        try:
+            user = User.edit(
+                username=form.username.data,
+                password=form.password.data,
+                email=form.email.data,
+                image_url=form.image_url.data or User.image_url.default.arg,
+                bio = form.bio.data,
+                background_image_url = form.background_image_url.data or User.image_url.default.arg,
+                location = form.location.data
+                )
+            db.session.commit()
+
+        except IntegrityError:
+            flash("Username already taken", 'danger')
+            return render_template('edit.html', form=form)
+        
+        return redirect(f'/users/{user.id}')
+
 
 
 @app.route('/users/delete', methods=["POST"])

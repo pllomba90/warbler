@@ -148,6 +148,27 @@ class User(db.Model):
 
         db.session.add(user)
         return user
+    
+    @classmethod
+    def edit(cls, username, email, password, image_url, bio, location, background_image_url):
+        """Edits user.
+
+        Hashes password and edits user in system.
+        """
+
+        hashed_pwd = bcrypt.generate_password_hash(password).decode('UTF-8')
+
+        user = User(
+            username=username,
+            email=email,
+            password=hashed_pwd,
+            image_url=image_url,
+            bio=bio,
+            location=location,
+            background_image_url=background_image_url
+        )
+
+        return user
 
     @classmethod
     def authenticate(cls, username, password):
