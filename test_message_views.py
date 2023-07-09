@@ -15,7 +15,7 @@ from models import db, connect_db, Message, User
 # before we import our app, since that will have already
 # connected to the database
 
-os.environ['DATABASE_URL'] = "postgresql:///warbler-test"
+os.environ['DATABASE_URL'] = "postgresql:///warbler_test"
 
 
 # Now we can import app
@@ -25,8 +25,8 @@ from app import app, CURR_USER_KEY
 # Create our tables (we do this here, so we only create the tables
 # once for all tests --- in each test, we'll delete the data
 # and create fresh new clean test data
-
-db.create_all()
+with app.app_context():
+    db.create_all()
 
 # Don't have WTForms use CSRF at all, since it's a pain to test
 

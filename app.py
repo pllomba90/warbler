@@ -5,8 +5,7 @@ from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
 from forms import UserAddForm, LoginForm, MessageForm, UserEditForm
-from models import db, connect_db, User, Message
-
+from models import db, connect_db, User, Message, Follows
 CURR_USER_KEY = "curr_user"
 
 app = Flask(__name__)
@@ -25,6 +24,7 @@ toolbar = DebugToolbarExtension(app)
 with app.app_context():
     connect_db(app)
     db.create_all()
+    
 
 
 ##############################################################################
@@ -69,17 +69,15 @@ def signup():
 
     form = UserAddForm()
 
-    if form.validate_on_submit():
+    if form.is_submitted() and form.validate():
         try:
             user = User.signup(
                 username=form.username.data,
                 password=form.password.data,
                 email=form.email.data,
                 image_url=form.image_url.data or User.image_url.default.arg,
-                bio = form.bio.data,
-                background_image_url = form.background_image_url.data or User.image_url.default.arg,
-                location = form.location.data
             )
+            
             db.session.commit()
 
         except IntegrityError:
@@ -100,7 +98,7 @@ def login():
 
     form = LoginForm()
 
-    if form.validate_on_submit():
+    if form.is_submitted() and form.validate():
         user = User.authenticate(form.username.data,
                                  form.password.data)
 
@@ -119,7 +117,7 @@ def logout():
     """Handle logout of user."""
     do_logout()
 
-    return render_template("home_anon.html")
+    return render_template("home-anon.html")
 
 
 ##############################################################################
@@ -213,13 +211,13 @@ def stop_following(follow_id):
     return redirect(f"/users/{g.user.id}/following")
 
 
-@app.route('/users/profile', methods=["GET", "POST"])
+@app.route('/users/profile/<int:user_id>', methods=["GET", "POST"])
 def profile(user_id):
     """Update profile for current user."""
     user = User.query.get_or_404(user_id)
-    form = UserEditForm(obj=user_id)
+    form = UserEditForm(obj=user)
 
-    if form.validate_on_submit():
+    if form.is_submitted() and form.validate():
         try:
             user = User.edit(
                 username=form.username.data,
@@ -227,7 +225,7 @@ def profile(user_id):
                 email=form.email.data,
                 image_url=form.image_url.data or User.image_url.default.arg,
                 bio = form.bio.data,
-                background_image_url = form.background_image_url.data or User.image_url.default.arg,
+                header_image_url = form.background_image_url.data or User.image_url.default.arg,
                 location = form.location.data
                 )
             db.session.commit()
@@ -237,7 +235,8 @@ def profile(user_id):
             return render_template('edit.html', form=form)
         
         return redirect(f'/users/{user.id}')
-
+    
+    return render_template('users/edit.html', form=form)
 
 
 @app.route('/users/delete', methods=["POST"])
@@ -272,7 +271,7 @@ def messages_add():
 
     form = MessageForm()
 
-    if form.validate_on_submit():
+    if form.is_submitted() and form.validate():
         msg = Message(text=form.text.data)
         g.user.messages.append(msg)
         db.session.commit()
@@ -280,6 +279,40 @@ def messages_add():
         return redirect(f"/users/{g.user.id}")
 
     return render_template('messages/new.html', form=form)
+
+@app.route('/users/add_like/<int:message_id>', methods=["POST"])
+def toggle_like(message_id):
+    """Toggle the like status of a message for the current user."""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    message = Message.query.get_or_404(message_id)
+
+    # Check if the user has already liked the message
+    if message in g.user.likes:
+        # Unlike the message
+        g.user.likes.remove(message)
+        db.session.commit()
+        flash("Message unliked.", "success")
+    else:
+        # Like the message
+        g.user.likes.append(message)
+        db.session.commit()
+        flash("Message liked!", "success")
+
+    return redirect("/")
+
+@app.route('/users/<int:user_id>/likes')
+def liked_messages(user_id):
+    """Show messages liked by the user."""
+
+    user = User.query.get_or_404(user_id)
+    liked_messages = user.likes  # Retrieve the messages liked by the user
+
+    return render_template('users/liked.html', user=user, liked_messages=liked_messages)
+
 
 
 @app.route('/messages/<int:message_id>', methods=["GET"])
@@ -316,16 +349,22 @@ def homepage():
     - anon users: no messages
     - logged in: 100 most recent messages of followed_users
     """
-
     if g.user:
-        messages = (Message
-                    .query
-                    .order_by(Message.timestamp.desc())
-                    .limit(100)
-                    .all())
+        user = g.user
+        messages = (
+            db.session.query(Message)
+            .join(User)
+            .join(Follows, User.id == Follows.user_being_followed_id)
+            .filter(Follows.user_following_id == user.id)
+            .order_by(Message.timestamp.desc())
+            .limit(100)
+            .all()
+        )
 
-        return render_template('home.html', messages=messages)
+        # Retrieve the message IDs liked by the current user
+        likes = [message.id for message in user.likes]
 
+        return render_template('home.html', messages=messages, likes=likes)
     else:
         return render_template('home-anon.html')
 

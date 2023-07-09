@@ -132,7 +132,7 @@ class User(db.Model):
         return len(found_user_list) == 1
 
     @classmethod
-    def signup(cls, username, email, password, image_url, bio, location, background_image_url):
+    def signup(cls, username, email, password, image_url):
         """Sign up user.
 
         Hashes password and adds user to system.
@@ -144,36 +144,33 @@ class User(db.Model):
             username=username,
             email=email,
             password=hashed_pwd,
-            image_url=image_url,
-            bio=bio,
-            location=location,
-            background_image_url=background_image_url
-        
+            image_url=image_url
         )
 
         db.session.add(user)
         return user
     
     @classmethod
-    def edit(cls, username, email, password, image_url, bio, location, background_image_url):
+    def edit(cls, username, email, password, image_url, bio, location, header_image_url):
         """Edits user.
 
         Hashes password and edits user in system.
         """
+        user = cls.authenticate(
+            password=password,
+            username=username)
+        if user:
+        # Update the user information
+            user.email = email
+            user.image_url = image_url
+            user.bio = bio
+            user.location = location
+            user.header_image_url = header_image_url
+            return user
+        else:
 
-        hashed_pwd = bcrypt.generate_password_hash(password).decode('UTF-8')
+            return None
 
-        user = User(
-            username=username,
-            email=email,
-            password=hashed_pwd,
-            image_url=image_url,
-            bio=bio,
-            location=location,
-            background_image_url=background_image_url
-        )
-
-        return user
 
     @classmethod
     def authenticate(cls, username, password):
@@ -224,6 +221,12 @@ class Message(db.Model):
     )
 
     user = db.relationship('User')
+
+    @classmethod
+    def get_messages_from_followed_users(cls, user):
+        """Get messages from followed users of the given user."""
+        followed_users_ids = [followed_user.id for followed_user in user.following]
+        return cls.query.filter(Message.user_id.in_(followed_users_ids)).all()
 
 
 def connect_db(app):
